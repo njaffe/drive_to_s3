@@ -3,6 +3,9 @@ from pydrive.drive import GoogleDrive
 import boto3
 import os
 
+import sys
+from dotenv import load_dotenv
+
 # Authenticate and create the PyDrive client.
 gauth = GoogleAuth()
 gauth.LocalWebserverAuth()  # Creates local webserver and automatically handles authentication.
@@ -30,10 +33,15 @@ def transfer_file(file_id, file_name, bucket_name, s3_key):
     os.remove(local_file)
     print(f"Deleted local file {local_file} after upload.")
 
-# Replace these variables with your file information and credentials.
-FILE_ID = 'your-google-drive-file-id'
-FILE_NAME = 'your-local-file-name'
-BUCKET_NAME = 'your-s3-bucket-name'
-S3_KEY = 'your-s3-key'
 
-transfer_file(FILE_ID, FILE_NAME, BUCKET_NAME, S3_KEY)
+if __name__ == "__main__":
+    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    load_dotenv(dotenv_path) # Load environment variables
+
+    # Replace these variables with your file information and credentials.
+    FILE_ID = os.environ.get('your-google-drive-file-id')
+    FILE_NAME = os.environ.get('your-local-file-name')
+    BUCKET_NAME = os.environ.get('your-s3-bucket-name')
+    S3_KEY = os.environ.get('your-s3-key')
+    
+    transfer_file(FILE_ID, FILE_NAME, BUCKET_NAME, S3_KEY)
