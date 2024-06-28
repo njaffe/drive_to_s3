@@ -38,15 +38,35 @@ if __name__ == "__main__":
     load_dotenv(dotenv_path)  # Load environment variables
 
     # Replace these variables with your file information and credentials.
-    FOLDER_ID = os.getenv('your-google-drive-folder-id')
-    BUCKET_NAME = os.getenv('your-s3-bucket-name')
-    S3_ACCESS_KEY = os.getenv('your-s3-key')
-    S3_SECRET_ACCESS_KEY = os.getenv('your-s3-secret-key')
+    FOLDER_ID = os.getenv('FOLDER_ID')
+    BUCKET_NAME = os.getenv('BUCKET_NAME')
+    S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
+    S3_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
 
-    # Authenticate and create the PyDrive client.
+   # Initialize GoogleAuth and GoogleDrive
     gauth = GoogleAuth()
-    gauth.LocalWebserverAuth()  # Creates local webserver and automatically handles authentication.
+
+    # Load the client secret file from the config directory
+    gauth.LoadClientConfigFile('config/client_secret_288395523855-ol7gukjchfrfmcodq9c4ekq1q93ktrh4.apps.googleusercontent.com.json')
+
+    # Try to load saved client credentials
+    gauth.LoadCredentialsFile("config/mycreds.txt")
+
+    if gauth.credentials is None:
+        # Authenticate if credentials are not there
+        gauth.LocalWebserverAuth()
+    elif gauth.access_token_expired:
+        # Refresh them if expired
+        gauth.Refresh()
+    else:
+        # Initialize the saved creds
+        gauth.Authorize()
+
+    # Save the current credentials to a file in the config directory
+    gauth.SaveCredentialsFile("config/mycreds.txt")
+
     drive = GoogleDrive(gauth)
+
 
     # S3 client
     s3 = boto3.client(
