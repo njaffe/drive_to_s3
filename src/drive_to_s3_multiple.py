@@ -4,56 +4,79 @@ import boto3
 import os
 from dotenv import load_dotenv
 
-def download_file_from_google_drive(file_id, file_name, drive):
+def download_file_from_google_drive(file_id, file_name, mime_type, drive, allowed_types):
     """Download a file from Google Drive given a file ID."""
+    if not any(file_name.lower().endswith(allowed_type.lower()) for allowed_type in allowed_types):
+        print(f"Skipping file {file_name} as it does not match the allowed types {allowed_types}\n")
+        return None
+
     file = drive.CreateFile({'id': file_id})
-    file.GetContentFile(file_name)
+    
+    if 'downloadUrl' in file or mime_type.startswith('image/'):
+        file.GetContentFile(file_name)
+    elif mime_type == 'application/vnd.google-apps.document':
+        file.GetContentFile(file_name, mimetype='application/pdf')
+    elif mime_type == 'application/vnd.google-apps.spreadsheet':
+        file.GetContentFile(file_name, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    elif mime_type == 'application/vnd.google-apps.presentation':
+        file.GetContentFile(file_name, mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+    else:
+        print(f"Cannot download file with MIME type {mime_type}\n")
+        return None
+    
     print(f"Downloaded {file_name} from Google Drive.\n")
     return file_name
 
-def upload_file_to_s3(file_name, bucket_name, s3_key, s3):
+def upload_file_to_s3(file_name, s3_bucket_name, s3_key, s3):
     """Upload a file to an S3 bucket."""
-    s3.upload_file(file_name, bucket_name, s3_key)
-    print(f"Uploaded {file_name} to S3 bucket {bucket_name} with key {s3_key}\n.")
+    s3.upload_file(file_name, s3_bucket_name, s3_key)
+    print(f"Uploaded {file_name} to S3 bucket {s3_bucket_name} with key {s3_key}\n.")
 
-def transfer_file(file_id, file_name, bucket_name, s3_key, drive, s3):
+def transfer_file(file_id, file_name, mime_type, s3_bucket_name, s3_key, drive, s3, allowed_types):
     """Transfer a file from Google Drive to S3."""
-    local_file = download_file_from_google_drive(file_id, file_name, drive)
-    upload_file_to_s3(local_file, bucket_name, s3_key, s3)
-    os.remove(local_file)
-    print(f"Deleted local file {local_file} after upload.\n")
+    local_file = download_file_from_google_drive(file_id, file_name, mime_type, drive, allowed_types)
+    if local_file:
+        upload_file_to_s3(local_file, s3_bucket_name, s3_key, s3)
+        os.remove(local_file)
+        print(f"Deleted local file {local_file} after upload.\n")
 
-def transfer_files_in_folder(folder_id, bucket_name, drive, s3):
+def transfer_files_in_folder(drive_folder_id, s3_bucket_name, s3_folder_prefix, drive, s3, allowed_types):
     """Transfer all files in a Google Drive folder to an S3 bucket."""
-    print(f"Fetching files from folder ID: {folder_id}\n")
-    file_list = drive.ListFile({'q': f"'{folder_id}' in parents and trashed=false"}).GetList()
+    print(f"Fetching files from folder ID: {drive_folder_id}\n")
+    file_list = drive.ListFile({'q': f"'{drive_folder_id}' in parents and trashed=false"}).GetList()
 
-    print(f"Transferring {len(file_list)} files from Google Drive to S3 bucket {bucket_name}.\n")
+    print(f"Transferring {len(file_list)} files from Google Drive to S3 bucket {s3_bucket_name}.\n")
 
     for file in file_list:
         file_id = file['id']
         file_name = file['title']
-        s3_key = f"{file_name}"  # Define how the S3 key should be named
-        transfer_file(file_id, file_name, bucket_name, s3_key, drive, s3)
+        mime_type = file['mimeType']
+        s3_key = f"{s3_folder_prefix}/{file_name}"  # Define how the S3 key should be named
+        transfer_file(file_id, file_name, mime_type, s3_bucket_name, s3_key, drive, s3, allowed_types)
 
 if __name__ == "__main__":
     dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
     load_dotenv(dotenv_path)  # Load environment variables
 
     # Replace these variables with your file information and credentials.
-    FOLDER_ID = os.getenv('FOLDER_ID')
-    BUCKET_NAME = os.getenv('BUCKET_NAME')
+    DRIVE_FOLDER_ID = os.getenv('DRIVE_FOLDER_ID')
+    S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
+    S3_FOLDER_PREFIX = os.getenv('S3_FOLDER_PREFIX')  # e.g., 'test-folder'
     S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
     S3_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
+    GOOGLE_SECRET_PATH = os.getenv('GOOGLE_SECRET_PATH')
+    ALLOWED_TYPES = os.getenv('ALLOWED_TYPES').split(',')  # e.g., 'jpg,png,pdf'
 
-    print(f"Folder ID: {FOLDER_ID}\n")
-    print(f"Bucket Name: {BUCKET_NAME}\n")
+    print(f"Folder ID: {DRIVE_FOLDER_ID}\n")
+    print(f"S3 Bucket Name: {S3_BUCKET_NAME}\n")
+    print(f"S3 Folder Prefix: {S3_FOLDER_PREFIX}\n")
+    print(f"Allowed File Types: {ALLOWED_TYPES}\n")
 
     # Initialize GoogleAuth and GoogleDrive
     gauth = GoogleAuth()
 
     # Load the client secret file from the config directory
-    gauth.LoadClientConfigFile('config/client_secret_288395523855-ol7gukjchfrfmcodq9c4ekq1q93ktrh4.apps.googleusercontent.com.json')
+    gauth.LoadClientConfigFile(GOOGLE_SECRET_PATH)
 
     # Try to load saved client credentials
     gauth.LoadCredentialsFile("config/mycreds.txt")
@@ -80,4 +103,4 @@ if __name__ == "__main__":
         aws_secret_access_key=S3_SECRET_ACCESS_KEY
     )
 
-    transfer_files_in_folder(FOLDER_ID, BUCKET_NAME, drive, s3)
+    transfer_files_in_folder(DRIVE_FOLDER_ID, S3_BUCKET_NAME, S3_FOLDER_PREFIX, drive, s3, ALLOWED_TYPES)
