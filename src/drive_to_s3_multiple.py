@@ -4,29 +4,32 @@ import boto3
 import os
 from dotenv import load_dotenv
 
-
 def download_file_from_google_drive(file_id, file_name, drive):
     """Download a file from Google Drive given a file ID."""
     file = drive.CreateFile({'id': file_id})
     file.GetContentFile(file_name)
-    print(f"Downloaded {file_name} from Google Drive.")
+    print(f"Downloaded {file_name} from Google Drive.\n")
     return file_name
 
 def upload_file_to_s3(file_name, bucket_name, s3_key, s3):
     """Upload a file to an S3 bucket."""
     s3.upload_file(file_name, bucket_name, s3_key)
-    print(f"Uploaded {file_name} to S3 bucket {bucket_name} with key {s3_key}.")
+    print(f"Uploaded {file_name} to S3 bucket {bucket_name} with key {s3_key}\n.")
 
 def transfer_file(file_id, file_name, bucket_name, s3_key, drive, s3):
     """Transfer a file from Google Drive to S3."""
     local_file = download_file_from_google_drive(file_id, file_name, drive)
     upload_file_to_s3(local_file, bucket_name, s3_key, s3)
     os.remove(local_file)
-    print(f"Deleted local file {local_file} after upload.")
+    print(f"Deleted local file {local_file} after upload.\n")
 
 def transfer_files_in_folder(folder_id, bucket_name, drive, s3):
     """Transfer all files in a Google Drive folder to an S3 bucket."""
+    print(f"Fetching files from folder ID: {folder_id}\n")
     file_list = drive.ListFile({'q': f"'{folder_id}' in parents and trashed=false"}).GetList()
+
+    print(f"Transferring {len(file_list)} files from Google Drive to S3 bucket {bucket_name}.\n")
+
     for file in file_list:
         file_id = file['id']
         file_name = file['title']
@@ -43,7 +46,10 @@ if __name__ == "__main__":
     S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
     S3_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
 
-   # Initialize GoogleAuth and GoogleDrive
+    print(f"Folder ID: {FOLDER_ID}\n")
+    print(f"Bucket Name: {BUCKET_NAME}\n")
+
+    # Initialize GoogleAuth and GoogleDrive
     gauth = GoogleAuth()
 
     # Load the client secret file from the config directory
@@ -66,7 +72,6 @@ if __name__ == "__main__":
     gauth.SaveCredentialsFile("config/mycreds.txt")
 
     drive = GoogleDrive(gauth)
-
 
     # S3 client
     s3 = boto3.client(
